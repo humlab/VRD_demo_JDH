@@ -16,3 +16,4 @@ In this demo, the VRD is applied to two videos that are openly available on Arch
 
 [The Moon and Us](https://archive.org/details/journey-through-the-solar-system-episode-06-the-moon-us) (28 min) Episode 6, in the documentary series Journey Through the Solar System released by NASA in 1983. Licensed under Attribution-NonCommercial-NoDerivs 4.0 International.
 
+Before uploading the videos on Github for the VRD demo, we converted them to hvc1 in order to stay within Github's allowed file size of 100 mb/file.
