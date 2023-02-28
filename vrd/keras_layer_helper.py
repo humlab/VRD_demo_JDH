@@ -35,9 +35,15 @@ def add_layer_activations_to_database(
     model = network.used_model
     used_model_layer = network.default_layer
     target_size = network.target_size
-    get_layer_outputs = K.function(
-        [model.layers[0].input], model.layers[used_model_layer].output
-    )
+
+    if network.stop_at_layer is None:
+        get_layer_outputs = K.function(
+            [model.layers[0].input], model.layers[used_model_layer].output
+        )
+    else:
+        get_layer_outputs = K.function(
+            [model.layers[0].input], model.get_layer(network.stop_at_layer).output
+        )
 
     with dbhandler.VRDDatabase(database_file) as dbc:
         for img in tqdm(frames.all_images):
@@ -82,22 +88,43 @@ def display_activation_for_image(filename: str, network: nn.Network):
     )
 
 
-def _print_layer_names(image, network: nn.Network):
-    """Helper function to determine which layer in a network to use.
+def get_layer_info(network: nn.Network):
+    """Creates a Pandas DataFrame-compliant list of dicts
+    with information of each layer including index, name, output shape
+    and total number of elements.
 
-    Prints names, index and size.
-
-    Current version requires an image to predict to then print the activations.
+    This can greatly assist in selecting a reasonable layer for using the VRD.
 
     Args:
-        image (_type_): A link to an image to use to predict.
-        network (nn.Network): _description_
-    """
-    activations = keract.get_activations(
-        network.used_model,
-        process_image(image, network.target_size, trim=True),
-        auto_compile=True,
-    )
+        network (nn.Network): The network to use as a base
 
-    for i, k in enumerate(activations.keys()):
-        print(f"{i}: {k}, size {activations[k].shape}")
+    Returns:
+        list: A list of dicts, which can then be used by pandas (or justprinted)
+    """
+
+    model = network.used_model
+
+
+    layer_info = []
+
+    def _get_output_size(output_shape):
+        if shape is None:
+            return 0
+        return np.prod([x for x in output_shape if x is not None]) 
+
+    for idx, layer in enumerate(model.layers):
+        shape = layer.output_shape
+        if type(shape) is list:
+            if len(shape) == 0:
+                shape = None
+            else:
+                shape = shape[0]
+        # pprint(shape)
+        layer_info.append(
+            {'Index':idx,
+            'Name':layer.name,
+            'Output size':shape,
+            'Output element count':_get_output_size(shape)
+            })
+    
+    return layer_info

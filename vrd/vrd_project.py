@@ -37,6 +37,7 @@ class VRDProject:
     additional_video_extensions: list = None
     neighbours_considered: int = 250
     override_network_default_layer: int = -1
+    stop_at_layer: str = None
     frame_extractor: FrameExtractor = None
     faiss_index: swigfaiss_avx2.Index = None
     neighbours: Neighbours = None
@@ -144,9 +145,13 @@ class VRDProject:
         """
         if force_recreate:
             os.remove(self.database_file)
+        model = self.get_model_instance()
+        stop_layer = model.stop_at_layer
+        if stop_layer is not None:
+            print(f'Layer specified ({stop_layer}), model index ({model.default_layer}) will be ignored.')
 
         klh.add_layer_activations_to_database(
-            self.get_model_instance(), self.database_file, self.frame_extractor
+            model, self.database_file, self.frame_extractor
         )
 
     def initialize_frame_extractor(self, force_recreate=False):
@@ -184,6 +189,7 @@ class VRDProject:
         neural_network = get_network(self.network)
         if self.override_network_default_layer > 0:
             neural_network.default_layer = self.override_network_default_layer
+        neural_network.stop_at_layer = self.stop_at_layer
 
         self._initialized_model = neural_network
         return self._initialized_model

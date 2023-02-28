@@ -40,8 +40,10 @@ def get_faiss_index(
             np.prod([i for i in x.output_shape if i])
         )  # TODO: Depricated asscalar
 
-    layer_size = get_layer_value_count(network.used_model.layers[network.default_layer])
-
+    if network.stop_at_layer is None:
+        layer_size = get_layer_value_count(network.used_model.layers[network.default_layer])
+    else:
+        layer_size = get_layer_value_count(network.used_model.get_layer(network.stop_at_layer))
     faiss_index = faiss.IndexFlatL2(layer_size)
 
     with dbhandler.VRDDatabase(database_file) as dbc:
@@ -50,6 +52,7 @@ def get_faiss_index(
             db_activation = dbc.get_layer_data(img)
             # Here we would add any (optional) preprocessing steps,
             # e.g. centering or scaling of some sort
+          
             faiss_index.add(db_activation)
     return faiss_index
 
