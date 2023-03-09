@@ -18,7 +18,6 @@ import PIL
 import PIL.ImageFont
 from PIL import ImageDraw
 import seaborn as sns
-from ipyaggrid import Grid
 from IPython.display import display
 from matplotlib.backend_bases import MouseButton
 from matplotlib.font_manager import findSystemFonts
@@ -775,35 +774,3 @@ def df_to_col_defs(df):
     df2.columns = new_columns
 
     return df2, col_list
-
-
-def get_grid(df):
-    """Creates a grid from a dataframe;
-    The grid is an interactive ipyaggrid widget that allows for sorting and filtering.
-
-    Args:
-        df ([type]): The dataframe
-
-    Returns:
-        The grid widget
-    """
-
-    new_df, column_defs = df_to_col_defs(df)
-
-    grid_options = {
-        "enableColResize": True,
-        "columnDefs": column_defs,
-        "enableFilter": True,
-        "enableSorting": True,
-        "animateRows": True,
-        "groupMultiAutoColumn": True,
-    }
-
-    grid1 = Grid(
-        quick_filter=True,
-        compress_data=False,
-        grid_data=new_df,
-        grid_options=grid_options,
-        columns_fit="auto",
-    )
-    return grid1

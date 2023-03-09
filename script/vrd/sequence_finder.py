@@ -3,16 +3,18 @@
 
 """
 import sys
-from tqdm.auto import tqdm
-
-import numpy as np
-import PIL
-from scipy.sparse import lil_matrix, triu
-from . import frame_extractor, neighbours
-from IPython.core.display import display
-import pandas as pd
 import time
 
+import numpy as np
+import pandas as pd
+import PIL
+from IPython.core.display import display
+from scipy.sparse import lil_matrix, triu
+from tqdm.auto import tqdm
+
+from vrd.vrd_project import VRDProject
+
+from . import frame_extractor, neighbours
 
 sys.path.append("..")
 
@@ -23,6 +25,7 @@ class SequenceFinder:
     sequence_lil_matrix: lil_matrix
     shortest_allowed_sequence: int
     max_distance: int
+    neigh: neighbours.Neighbours
 
     def __init__(
         self,
@@ -30,7 +33,7 @@ class SequenceFinder:
         max_distance=30000,
         shortest_allowed_sequence=3,
     ) -> None:
-        self.neighbours = neigh
+        self.neigh = neigh
         self.max_distance = max_distance
         self.shortest_allowed_sequence = shortest_allowed_sequence
 
@@ -50,7 +53,7 @@ class SequenceFinder:
         """
         print("Removing neighbours from same video...")
         before = self.sequence_lil_matrix.nnz
-        for idxes in tqdm(self.neighbours.frames.cached_video_index.values()):
+        for idxes in tqdm(self.neigh.frames.cached_video_index.values()):
             arr = np.array(list(idxes))
             amin = np.min(arr)
             amax = np.max(arr) + 1  # Include last element
@@ -73,9 +76,9 @@ class SequenceFinder:
         Returns:
             A scipy.lil_matrix containing all neighbours that were within the specified distance.
         """
-        dlist = self.neighbours.distance_list
+        dlist = self.neigh.distance_list
         max_index = np.max(np.array([np.max(i) for d, i in dlist]))
-        print(len(self.neighbours.frames.all_images))
+        print(len(self.neigh.frames.all_images))
         print(f"Maximum index found: {max_index}")
 
         neighbour_matrix = lil_matrix((max_index + 1, max_index + 1), dtype=np.float32)
@@ -147,7 +150,6 @@ class SequenceFinder:
             sparse_matrix.rows[i] = [x - i for x in sparse_matrix.rows[i]]
 
         col = sparse_matrix.T  # work on columns instead!
-        # return col.todense()
 
         found_sequences = []
         for i in range(0, len(col.rows)):
@@ -271,15 +273,68 @@ class SequenceFinder:
         print(f"Merged from {len(sequences)} to {len(new_sequence)} sequences")
         return new_sequence
 
+
+
+    def get_sequence_dataframe(self, sequences: list) -> pd.DataFrame:
+        """Creates a Pandas dataframe with all sequences.
+        This includes:
+        * Video names
+        * Video start times
+        * Duration
+        * Original indexes
+        * Mean distance
+        * Number of non-matching frames
+
+        This DataFrame can be shown in a notebook, and possibly filtered, to be recreated into a seqency by the
+        dataframe_to_sequence method.
+
+        Args:
+            sequences (list): _description_
+
+        Returns:
+            pd.DataFrame: _description_
+        """
+        df_list = []
+        for start1, start2, duration in sequences:
+            v1, v1_start = self.neigh.frames.get_video_and_start_time_from_index(start1)
+            v2, v2_start = self.neigh.frames.get_video_and_start_time_from_index(start2)
+
+            time_str = lambda x: time.strftime("%H:%M:%S", time.gmtime(x))
+            
+            dist_mean, dist_zeros = self.get_sequence_mean_distance(start1, start2, duration)
+
+            df_list.append(
+                {
+                    "Video 1": v1,
+                    "Video 2": v2,
+                    "Video 1 Start time": time_str(v1_start),
+                    "Video 1 End time": time_str(v1_start + duration),
+                    "Video 2 Start time": time_str(v2_start),
+                    "Video 2 End time": time_str(v2_start + duration),
+                    "Duration": duration,
+                    "Index Video 1": start1,
+                    "Index Video 2": start2,
+                    "Match mean distance": dist_mean,
+                    "# not matching": dist_zeros,
+                }
+            )
+        return pd.DataFrame(df_list)
+    
+    @staticmethod
+    def dataframe_to_sequence(df: pd.DataFrame) -> list:
+        new_seq = []
+        for id, row in df.to_dict('index').items():
+            new_seq.append((row['Index Video 1'], row['Index Video 2'], row['Duration']))
+        return new_seq
+    
+
     def show_notebook_sequence(
         self,
         sequences,
         show_limit: int = None,
         show_shift=False,
         frame_resize=(30, 30),
-        offset=0,
-        minimize_nonmatch = False
-
+        sort_order: callable = None,
     ):
         """Displays longest-to-shortest sequences in a notebook
 
@@ -290,47 +345,27 @@ class SequenceFinder:
                 several seconds forward or backwards.
             frame_resize (tuple, optional): Size of the thumbnails of each frame
         """
-        frames = self.neighbours.frames
+        frames = self.neigh.frames
+
+        if sort_order is None:
+            # Default: Sort by duration
+            sequences = sorted(sequences, key=lambda x: x[2], reverse=True)
+        else:
+            sequences = sort_order(sequences)
 
         time_str = lambda x: time.strftime("%H:%M:%S", time.gmtime(x))
-        for start1, start2, duration in sorted(
-            sequences, key=lambda x: x[2], reverse=True
-        )[:show_limit]:
-            start1 += offset
+        for start1, start2, duration in sequences[:show_limit]:
             v1, v1_start = frames.get_video_and_start_time_from_index(start1)
             v2, v2_start = frames.get_video_and_start_time_from_index(start2)
 
-            duration = duration + 1
+            # duration = duration + 1
 
             if show_shift:
-                shift_results = []
-                for shift in range(-3, 4):
-                    res_arr = np.zeros(duration, dtype=np.float32)
-                    for i in range(duration):
-                        res_arr[i] = self.sequence_lil_matrix_distance[
-                            start2 + i + shift, start1 + i
-                        ]
-                    nonzeros = res_arr[np.where(res_arr > 0)[0]]
+                self.show_shift_df(start1, start2, duration)
 
-                    dist_mean = np.mean(nonzeros) if len(nonzeros) > 0 else np.nan
-                    dist_zeros = np.sum(res_arr == 0)
-                    shift_results.append(
-                        {"Shift": shift, "Mean": dist_mean, "Zeros": dist_zeros}
-                    )
-                df = pd.DataFrame(shift_results).set_index("Shift")
-                display(df)
-                if minimize_nonmatch:
-                    df = df[df.Zeros == df.Zeros.min()]
-                    if len(df > 1):
-                        df = df[df.Mean == df.Mean.min()]
-                    start1 -= df.reset_index().Shift.values[0]
-
-            res_arr = np.zeros(duration, dtype=np.float32)
-            for i in range(duration):
-                res_arr[i] = self.sequence_lil_matrix_distance[start2 + i, start1 + i]
-            nonzeros = res_arr[np.where(res_arr > 0)[0]]
-            dist_mean = np.mean(nonzeros) if len(nonzeros) > 0 else np.nan
-            dist_zeros = np.sum(res_arr == 0)
+            dist_mean, dist_zeros = self.get_sequence_mean_distance(
+                start1, start2, duration
+            )
 
             pd_data = [
                 {
@@ -359,6 +394,79 @@ class SequenceFinder:
                     start1, start2, duration, frames, frame_resize=frame_resize
                 )
             )
+
+    def get_sequence_mean_distance(self, start1, start2, duration):
+        res_arr = np.zeros(duration, dtype=np.float32)
+        for i in range(duration):
+            res_arr[i] = self.sequence_lil_matrix_distance[start2 + i, start1 + i]
+        nonzeros = res_arr[np.where(res_arr > 0)[0]]
+        dist_mean = np.mean(nonzeros) if len(nonzeros) > 0 else np.nan
+        dist_zeros = np.sum(res_arr == 0)
+        return dist_mean, dist_zeros
+
+    def show_shift_df(self, start1, start2, duration):
+        shift_results = []
+        for shift in range(-3, 4):
+            res_arr = np.zeros(duration, dtype=np.float32)
+            for i in range(duration):
+                res_arr[i] = self.sequence_lil_matrix_distance[
+                    start2 + i + shift, start1 + i
+                ]
+            nonzeros = res_arr[np.where(res_arr > 0)[0]]
+
+            dist_mean = np.mean(nonzeros) if len(nonzeros) > 0 else np.nan
+            dist_zeros = np.sum(res_arr == 0)
+            shift_results.append(
+                {"Shift": shift, "Mean": dist_mean, "Zeros": dist_zeros}
+            )
+        df = pd.DataFrame(shift_results).set_index("Shift")
+        display(df)
+        # if minimize_nonmatch:
+        #     df = df[df.Zeros == df.Zeros.min()]
+        #     if len(df > 1):
+        #         df = df[df.Mean == df.Mean.min()]
+        #     start1 -= df.reset_index().Shift.values[0]
+
+    @staticmethod
+    def remove_unwanted_sequences(sequences, project: VRDProject, excel_file: str):
+        """ Removes unwanted sequences. The unwanted sequences are defined in an excel file,
+        containing the columns:
+                'Video': The video name
+                'Start time': The start time in a string, formatted as HH:MM:SS 
+                'Duration': An integer describing the duration of the unwanted sequence, in seconds
+        
+        
+        Note: Only the time stamps in the file is used, as the index itself can change """
+        frames = project.frame_extractor
+        df = pd.read_excel(excel_file)
+        df["start_time_seconds"] = (
+            pd.to_timedelta(df["Start time"].astype(str)).dt.total_seconds().apply(int)
+        )
+
+        highest_dur = df.sort_values("Duration", ascending=False).drop_duplicates(
+            ["Video", "start_time_seconds"]
+        )
+        highest_dur = highest_dur.sort_values(by=["Video", "start_time_seconds"])
+
+        remove_set = set()
+        for vid in df.Video.unique():
+            vid_df = df[df.Video == vid]
+            video_frames = sorted(list(frames.get_index_from_video_name(vid)))
+            for time, duration in vid_df[["start_time_seconds", "Duration"]].values:
+                remove_set.update(
+                    list(range(video_frames[time], video_frames[time + duration]))
+                )
+        sequence_remove_indexes = []
+        for seq_index, (start1, start2, dur) in enumerate(sequences):
+            seq_to_find = list(range(start1, start1 + dur)) + list(
+                range(start2, start2 + dur)
+            )
+            for idx in seq_to_find:
+                if idx in remove_set:
+                    sequence_remove_indexes.append(seq_index)
+                    break
+        for seq_index in sorted(sequence_remove_indexes, reverse=True):
+            del sequences[seq_index]
 
     @staticmethod
     def show_sequence(
