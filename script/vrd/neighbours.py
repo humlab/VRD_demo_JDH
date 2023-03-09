@@ -724,11 +724,31 @@ class Neighbours:
 
         return df
 
-    def get_distance_histogram(self):
+    def add_halfway_ticks(self, ax=None):
+        if ax is None:
+            ax = plt.gca()
+
+        x_tick_pos = ax.get_xticks()
+
+        x_tick_halfway = [
+            (low + high) / 2 for low, high in zip(x_tick_pos[:-1], x_tick_pos[1:])
+        ]
+
+        x_lim = ax.get_xlim()
+
+        plt.xticks(list(x_tick_pos) + x_tick_halfway)
+
+        ax.set_xlim(x_lim)
+
+    def get_distance_histogram(self, halfway_x_ticks=False):
         ax = sns.histplot(np.concatenate([d[1:] for d, i in self.distance_list]))
-        ax.tick_params(axis='x', rotation=270)
-        ax.set(xlabel='Distance')
+        ax.tick_params(axis="x", rotation=270)
+        ax.set(xlabel="Distance")
         ax.get_xaxis().get_major_formatter().set_scientific(False)
+
+        if halfway_x_ticks:
+            self.add_halfway_ticks(ax)
+
         return ax
 
     def neighbour_statistics(self):
