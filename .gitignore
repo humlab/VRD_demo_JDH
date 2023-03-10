@@ -2,3 +2,4 @@ __pycache__
 vrd_projects/*
 .ipynb_checkpoints/
 .DS_Store
+.vscode
