@@ -24,14 +24,9 @@ class Neighbours:
     """Neighbours class, containing values and logic for closest neighbours for frames
     in the VRD.
 
-    Raises:
-        Exception: [description]
-
     Returns:
-        [type]: [description]
+        Neighbours: An instance of the neighbours class
 
-    Yields:
-        [type]: [description]
     """
 
     frames: FrameExtractor
@@ -94,9 +89,15 @@ class Neighbours:
                 self.distance_list[idx] = (d, i)
 
     def _ensure_two_way_relationship(self):
-        """Ensures that if  index A is a neighbour to index B, the reverse is also true!"""
+        """Ensures that if  index A is a neighbour to index B, the reverse is also true.
+
+        This is largely made redundant by the SequenceFinder class, as this is the default
+        behavior there.
+
+        TODO: Ensure that this modification is done in-place for cases where the list is long.
+
+        """
         distance_copy = deepcopy(self.distance_list)
-        # lookup_table = {_i[0]:(i, set(_i[1:]), {__i:__d for __d, __i in zip(_d[1:],_i[1:])}) for i, (_d,_i) in enumerate(distance_copy)}
         lookup_table = {
             _i[0]: (i, set(_i[1:])) for i, (_d, _i) in enumerate(distance_copy)
         }
@@ -110,15 +111,19 @@ class Neighbours:
                 try:
                     neighbour_list_index, matching_set = lookup_table[_i]
                 except KeyError:
-                    # This happens if the neighbour frame has been deleted - due to lack of neighbours, or just filtered. Should we create it in this case?
-                    # If it was filtered, this goes against the "wishes of the operator",    so safest to skip for now.
-                    # Best case, just run this just after creation; Doing so sidesteps this problem
+                    # This happens if the neighbour frame has been deleted -
+                    # due to lack of neighbours, or just filtered. Should
+                    # we create it in this case? If it was filtered, this
+                    # goes against the "wishes of the operator",    so
+                    # safest to skip for now. Best case, just run this
+                    # just after creation; Doing so sidesteps this problem
                     continue
-                # Check if the original frame is a neighbour in the neighbours' neighbour list
+                # Check if the original frame is a neighbour in the
+                # neighbours' neighbour list
                 if orig_i not in matching_set:
                     added_count += 1
-                    # If not there, it should be added (including distance!)
-                    # print(f'Len before: {len(self.neighbours.distance_list[neighbour_list_index][0])}')
+                    # If not there, it should be added
+                    # (including distance!)
                     new_d = np.append(
                         self.distance_list[neighbour_list_index][0], _d
                     )  # add original frame distance to neighbour as distance
@@ -130,7 +135,15 @@ class Neighbours:
         self.distance_list = sorted(self.distance_list, key=lambda x: x[1][0])
         # print(f"Added {added_count} to distance list.")
 
-    def _get_subdir(self, index):
+    def _get_subdir(self, index: int):
+        """Helper class, get subdirectory of a specific frame.
+
+        Args:
+            index (int): The index to find a subdirectory for
+
+        Returns:
+            _type_: _description_
+        """
         frame = self.frames.all_images[index]
         return self.frames.get_subdir_for_frame(frame)
 
@@ -146,7 +159,8 @@ class Neighbours:
 
         Args:
             folders ([type]): A list of folders
-            keep_reverse_matches (bool, optional): Whether or not to keep frames outside the subfolders but with neighbours in the subfolders.
+            keep_reverse_matches (bool, optional): Whether or not to keep frames 
+                outside the subfolders but with neighbours in the subfolders.
         """
         dlist = self.distance_list
         if isinstance(folders, list):
@@ -186,8 +200,8 @@ class Neighbours:
 
     def get_best_match(self, video_1, video_2):
         """
-        Gets the best video match between two videos, given the FrameExtractor, the associated distance_list,
-        and the two video names.
+        Gets the best video match between two videos, given the FrameExtractor, 
+        the associated distance_list, and the two video names.
         """
         v1_indexes = self.frames.get_index_from_video_name(video_1)
         v2_indexes = self.frames.get_index_from_video_name(video_2)
@@ -223,7 +237,8 @@ class Neighbours:
     def plot_remaining_statistics(self, figure_size=(15, 6), **kwargs):
         """Displays histograms for 1) remaining neighbours and 2) remaining distances.
 
-        Using these values, the user can detect if a filtering step removed too many or too few neighbours.
+        Using these values, the user can detect if a filtering step removed too 
+        many or too few neighbours.
         """
         remaining_count = self._get_remaining_count()
 
@@ -277,7 +292,22 @@ class Neighbours:
 
         return df
 
-    def find_indexes_for_first_or_last_seconds(self, start_seconds, end_seconds):
+    def find_indexes_for_first_or_last_seconds(
+        self, start_seconds: int, end_seconds: int
+    ):
+        """Find the specified number of seconds (frames) from the beginning and end of each
+        video file.
+
+        There is currently no option to only perform this on some videos; all videos
+        will be impacted.
+
+        Args:
+            start_seconds (int): Gets this many seconds (frames) from the start of each video
+            end_seconds (int): Gets this many seconds (frames) from the end of each video
+
+        Returns:
+            set: A set containing the relevant indexes
+        """
         ## Test of removing start and end of each video
         first_last_seconds = set()
         for f, idx in tqdm(self.frames.cached_video_index.items()):
@@ -724,6 +754,7 @@ class Neighbours:
 
         return df
 
+    @staticmethod
     def add_halfway_ticks(self, ax=None):
         if ax is None:
             ax = plt.gca()
@@ -754,7 +785,6 @@ class Neighbours:
     def neighbour_statistics(self):
         dlist = self.distance_list
         first_indexes = np.array([i[0] for d, i in dlist])
-        max_index = np.max([np.max(i) for d, i in dlist])
         print(f"Total number of frames considered: {len(self.frames.all_images)}")
 
         print(
@@ -799,7 +829,8 @@ class FilterChange:
 
         This function provide this information per step:
 
-        Video name, total frames, lost frames, remaining frames, Average number of self before, Average number of self after
+        Video name, total frames, lost frames, remaining frames, 
+        Average number of self before, Average number of self after
 
         Args:
             neighbours_new ([Neighbours]): The new self state, generarally after filtering
@@ -896,8 +927,8 @@ class FilterChange:
             )
         )
 
-        # Calculate average distances
         def get_average_distance(dlist):
+            """Local helper function to get the average distance of a distance list"""
             distances = [(len(d) - 1, np.sum(d[1:])) for d, i in dlist]
             if len(distances) == 0:
                 return -1
