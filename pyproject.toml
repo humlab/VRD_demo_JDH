@@ -1,0 +1,29 @@
+[tool.poetry]
+name = "video-reuse-detector"
+version = "0.1.0"
+description = "The video reuse detector"
+authors = ["TomasSkotare <tomas.skotare@umu.se>"]
+license = "MIT"
+readme = "README.md"
+packages = [{include = "video_reuse_detector"}]
+
+[tool.poetry.dependencies]
+python = "^3.7"
+faiss-cpu = "*"
+ffmpeg-python = "*"
+keract = "*"
+keras = "*"
+numpy= "*"
+opencv-python = "*"
+pandas = "*"
+Pillow = "*"
+plotly = "*"
+scipy = "*"
+seaborn = "*"
+tensorflow = "*"
+tqdm = "*"
+Wand = "*"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
